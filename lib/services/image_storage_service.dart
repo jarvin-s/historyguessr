@@ -1,47 +1,51 @@
+import 'dart:math';
+
 import 'package:supabase_flutter/supabase_flutter.dart';
 
 class ImageStorageService {
   ImageStorageService(this._client);
 
   final SupabaseClient _client;
+  final _random = Random();
 
   static const bucket = 'images';
   static const stageCount = 6;
-  static const dailyPathPrefix = 'daily/';
+  static const randomPathPrefix = 'random';
 
-  static const _imagePaths = [
-    'images/einstein.png',
-    'einstein.png',
-  ];
+  static String randomImagePath(String folderKey, int stage) {
+    assert(stage >= 1 && stage <= stageCount, 'Stage must be between 1 and $stageCount');
+    return '$randomPathPrefix/$folderKey/$stage.png';
+  }
 
-  Future<String> fetchImageUrl() async {
-    for (final path in _imagePaths) {
-      try {
-        return await _fetchUrl(path);
-      } catch (_) {
-        continue;
+  Future<List<String>> listRandomFigureKeys() async {
+    final result = await _client.storage.from(bucket).list(path: randomPathPrefix);
+
+    return result
+        .map((item) => item.name)
+        .where((name) => !name.contains('.'))
+        .toList();
+  }
+
+  Future<String> pickRandomFigureKey({String? exclude}) async {
+    final keys = await listRandomFigureKeys();
+    var available = keys;
+
+    if (exclude != null) {
+      available = keys.where((key) => key != exclude).toList();
+      if (available.isEmpty) {
+        available = keys;
       }
     }
 
-    return _client.storage.from(bucket).getPublicUrl(_imagePaths.first);
+    if (available.isEmpty) {
+      throw StateError('No random figures found in storage at $randomPathPrefix/.');
+    }
+
+    return available[_random.nextInt(available.length)];
   }
 
-  static String dailyImagePath(DateTime date, int stage) {
-    assert(stage >= 1 && stage <= stageCount, 'Stage must be between 1 and $stageCount');
-    return '$dailyPathPrefix${_formatDate(date)}/$stage.png';
-  }
-
-  Future<String> fetchDailyImageUrl(DateTime date, int stage) {
-    return _fetchUrl(dailyImagePath(date, stage));
-  }
-
-  Future<List<String>> fetchDailyImageUrls(DateTime date) {
-    return Future.wait(
-      List.generate(
-        stageCount,
-        (index) => fetchDailyImageUrl(date, index + 1),
-      ),
-    );
+  Future<String> fetchRandomImageUrl(String folderKey, int stage) {
+    return _fetchUrl(randomImagePath(folderKey, stage));
   }
 
   Future<String> _fetchUrl(String path) async {
@@ -50,13 +54,5 @@ class ImageStorageService {
     } catch (_) {
       return _client.storage.from(bucket).getPublicUrl(path);
     }
-  }
-
-  static String _formatDate(DateTime date) {
-    final utc = date.toUtc();
-    final year = utc.year.toString().padLeft(4, '0');
-    final month = utc.month.toString().padLeft(2, '0');
-    final day = utc.day.toString().padLeft(2, '0');
-    return '$year-$month-$day';
   }
 }

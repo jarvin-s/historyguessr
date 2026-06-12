@@ -1,69 +1,79 @@
 import 'package:flutter/foundation.dart';
 
-import '../models/daily_challenge.dart';
-import '../services/daily_challenge_service.dart';
+import '../data/historical_figures.dart';
+import '../models/game_round.dart';
 import '../services/image_storage_service.dart';
 
 enum StageResult { pending, wrong, correct }
 
 class GameViewModel extends ChangeNotifier {
-  GameViewModel(
-    this._dailyChallengeService,
-    this._imageStorageService,
-  );
+  GameViewModel(this._imageStorageService);
 
-  final DailyChallengeService _dailyChallengeService;
   final ImageStorageService _imageStorageService;
 
-  DailyChallenge? dailyChallenge;
+  GameRound? currentRound;
   int currentStage = 1;
   List<StageResult> stageResults = List.filled(
     ImageStorageService.stageCount,
     StageResult.pending,
   );
+  List<String> guesses = [];
   String? imageUrl;
   bool isLoadingImage = true;
   String? imageError;
   bool isWon = false;
   bool isGameOver = false;
+  bool shouldShowCompletionModal = false;
+  RoundSummary? roundSummary;
 
   bool get canGuess =>
-      dailyChallenge != null && !isLoadingImage && !isWon && !isGameOver;
+      currentRound != null && !isLoadingImage && !isWon && !isGameOver;
 
-  Future<void> loadDaily() async {
+  Future<void> startNewRound({String? excludeFolderKey}) async {
     isLoadingImage = true;
     imageError = null;
-    dailyChallenge = null;
+    currentRound = null;
     currentStage = 1;
     stageResults = List.filled(
       ImageStorageService.stageCount,
       StageResult.pending,
     );
+    guesses = [];
     isWon = false;
     isGameOver = false;
+    shouldShowCompletionModal = false;
+    roundSummary = null;
     notifyListeners();
 
     try {
-      dailyChallenge = await _dailyChallengeService.fetchToday();
+      final folderKey = await _imageStorageService.pickRandomFigureKey(
+        exclude: excludeFolderKey,
+      );
+      final answer = HistoricalFigures.answerForFolderKey(folderKey);
 
-      if (dailyChallenge == null) {
+      if (answer == null) {
         imageUrl = null;
-        imageError = 'No daily challenge available today.';
+        imageError = 'No matching figure for "$folderKey".';
         return;
       }
 
-      imageUrl = await _imageStorageService.fetchDailyImageUrl(
-        dailyChallenge!.challengeDate,
+      currentRound = GameRound(folderKey: folderKey, answer: answer);
+      imageUrl = await _imageStorageService.fetchRandomImageUrl(
+        folderKey,
         currentStage,
       );
     } catch (error) {
       imageUrl = null;
-      imageError = 'Failed to load daily challenge.';
-      debugPrint('Daily load error: $error');
+      imageError = 'Failed to load figure.';
+      debugPrint('Round load error: $error');
     } finally {
       isLoadingImage = false;
       notifyListeners();
     }
+  }
+
+  Future<void> refreshRound() {
+    return startNewRound(excludeFolderKey: currentRound?.folderKey);
   }
 
   Future<void> submitGuess(String guess) async {
@@ -71,12 +81,13 @@ class GameViewModel extends ChangeNotifier {
       return;
     }
 
-    final challenge = dailyChallenge!;
+    final round = currentRound!;
+    guesses.add(guess);
 
-    if (challenge.matchesGuess(guess)) {
+    if (round.matchesGuess(guess)) {
       stageResults[currentStage - 1] = StageResult.correct;
       isWon = true;
-      notifyListeners();
+      await _showFinalImage(round);
       return;
     }
 
@@ -84,7 +95,11 @@ class GameViewModel extends ChangeNotifier {
 
     if (currentStage >= ImageStorageService.stageCount) {
       isGameOver = true;
-      notifyListeners();
+      if (imageUrl != null && imageError == null) {
+        _completeRound();
+      } else {
+        await _showFinalImage(round);
+      }
       return;
     }
 
@@ -93,8 +108,8 @@ class GameViewModel extends ChangeNotifier {
     notifyListeners();
 
     try {
-      imageUrl = await _imageStorageService.fetchDailyImageUrl(
-        challenge.challengeDate,
+      imageUrl = await _imageStorageService.fetchRandomImageUrl(
+        round.folderKey,
         currentStage,
       );
     } catch (error) {
@@ -104,5 +119,40 @@ class GameViewModel extends ChangeNotifier {
       isLoadingImage = false;
       notifyListeners();
     }
+  }
+
+  Future<void> _showFinalImage(GameRound round) async {
+    isLoadingImage = true;
+    notifyListeners();
+
+    try {
+      imageUrl = await _imageStorageService.fetchRandomImageUrl(
+        round.folderKey,
+        ImageStorageService.stageCount,
+      );
+      imageError = null;
+    } catch (error) {
+      imageError = 'Failed to load image.';
+      debugPrint('Final image load error: $error');
+    } finally {
+      isLoadingImage = false;
+      _completeRound();
+    }
+  }
+
+  void _completeRound() {
+    roundSummary = RoundSummary(
+      guesses: List<String>.from(guesses),
+      isWon: isWon,
+      answer: currentRound!.answer,
+      imageUrl: imageUrl,
+    );
+    shouldShowCompletionModal = true;
+    notifyListeners();
+  }
+
+  void clearCompletionModalFlag() {
+    shouldShowCompletionModal = false;
+    notifyListeners();
   }
 }

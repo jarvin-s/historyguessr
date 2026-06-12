@@ -8,6 +8,5 @@ void main() {
 
     expect(find.text('HistoryGuessr'), findsOneWidget);
     expect(find.text('GUESS'), findsOneWidget);
-    expect(find.text('?'), findsOneWidget);
   });
 }

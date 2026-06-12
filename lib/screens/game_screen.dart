@@ -3,10 +3,10 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../config/supabase_config.dart';
 import '../data/historical_figures.dart';
-import '../services/daily_challenge_service.dart';
 import '../services/image_storage_service.dart';
 import '../theme/app_colors.dart';
 import '../view_models/game_view_model.dart';
+import '../widgets/round_completion_dialog.dart';
 
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
@@ -17,6 +17,7 @@ class GameScreen extends StatefulWidget {
 
 class _GameScreenState extends State<GameScreen> {
   final _guessController = TextEditingController();
+  final _guessFocusNode = FocusNode();
   late final GameViewModel _viewModel;
 
   @override
@@ -24,19 +25,61 @@ class _GameScreenState extends State<GameScreen> {
     super.initState();
     final client = SupabaseConfig.client;
     _viewModel = GameViewModel(
-      DailyChallengeService(client),
       ImageStorageService(client),
     )..addListener(_onViewModelChanged);
-    _viewModel.loadDaily();
+    _guessFocusNode.addListener(_onGuessFocusChanged);
+    _startRound();
+  }
+
+  void _onGuessFocusChanged() {
+    setState(() {});
+  }
+
+  Future<void> _startRound() async {
+    await _viewModel.startNewRound();
+    _maybeShowCompletionModal();
+  }
+
+  Future<void> _refreshRound() async {
+    _guessController.clear();
+    await _viewModel.refreshRound();
+    _maybeShowCompletionModal();
   }
 
   void _onViewModelChanged() {
     setState(() {});
+    _maybeShowCompletionModal();
+  }
+
+  void _maybeShowCompletionModal() {
+    if (!_viewModel.shouldShowCompletionModal ||
+        _viewModel.roundSummary == null) {
+      return;
+    }
+
+    final summary = _viewModel.roundSummary!;
+    _viewModel.clearCompletionModalFlag();
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) {
+        return;
+      }
+      RoundCompletionDialog.show(
+        context,
+        summary: summary,
+        onPlayAgain: _refreshRound,
+      );
+    });
   }
 
   void _submitGuess() {
-    final guess = _guessController.text;
-    if (guess.trim().isEmpty || !_viewModel.canGuess) {
+    final guess = HistoricalFigures.resolveExact(_guessController.text);
+    if (guess == null ||
+        !_viewModel.canGuess ||
+        !HistoricalFigures.canSubmit(
+          guess,
+          exclude: _viewModel.guesses,
+        )) {
       return;
     }
 
@@ -50,6 +93,9 @@ class _GameScreenState extends State<GameScreen> {
       ..removeListener(_onViewModelChanged)
       ..dispose();
     _guessController.dispose();
+    _guessFocusNode
+      ..removeListener(_onGuessFocusChanged)
+      ..dispose();
     super.dispose();
   }
 
@@ -65,33 +111,61 @@ class _GameScreenState extends State<GameScreen> {
                 _Header(),
                 const Divider(height: 1, thickness: 1, color: AppColors.divider),
                 Expanded(
-                  child: Align(
-                    alignment: Alignment.topCenter,
-                    child: ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 520),
-                      child: Padding(
-                        padding: const EdgeInsets.fromLTRB(32, 24, 32, 0),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          crossAxisAlignment: CrossAxisAlignment.center,
-                          children: [
-                            _GameImage(
-                              imageUrl: _viewModel.imageUrl,
-                              isLoading: _viewModel.isLoadingImage,
-                              error: _viewModel.imageError,
+                  child: LayoutBuilder(
+                    builder: (context, viewport) {
+                      // Invisible filler shown while the input is focused, so
+                      // the page can always scroll the input to the top and
+                      // leave the dropdown fully visible above the keyboard.
+                      final fillerHeight = _guessFocusNode.hasFocus
+                          ? (viewport.maxHeight - 120)
+                              .clamp(0.0, double.infinity)
+                          : 0.0;
+
+                      return SingleChildScrollView(
+                        child: Center(
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxWidth: 520),
+                            child: Padding(
+                              padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.stretch,
+                                children: [
+                                  Center(
+                                    child: _GameImage(
+                                      imageUrl: _viewModel.imageUrl,
+                                      isLoading: _viewModel.isLoadingImage,
+                                      error: _viewModel.imageError,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 28),
+                                  Center(
+                                    child: _ProgressDots(
+                                      stageResults: _viewModel.stageResults,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 28),
+                                  _GuessInputRow(
+                                    controller: _guessController,
+                                    focusNode: _guessFocusNode,
+                                    enabled: _viewModel.canGuess,
+                                    guessedFigures: _viewModel.guesses,
+                                    onGuess: _submitGuess,
+                                  ),
+                                  if (_viewModel.guesses.isNotEmpty) ...[
+                                    const SizedBox(height: 16),
+                                    _SubmittedGuesses(
+                                      guesses: _viewModel.guesses,
+                                      answer: _viewModel.currentRound?.answer,
+                                    ),
+                                  ],
+                                  SizedBox(height: fillerHeight),
+                                ],
+                              ),
                             ),
-                            const SizedBox(height: 28),
-                            _ProgressDots(stageResults: _viewModel.stageResults),
-                            const SizedBox(height: 28),
-                            _GuessInputRow(
-                              controller: _guessController,
-                              enabled: _viewModel.canGuess,
-                              onGuess: _submitGuess,
-                            ),
-                          ],
+                          ),
                         ),
-                      ),
-                    ),
+                      );
+                    },
                   ),
                 ),
               ],
@@ -99,7 +173,9 @@ class _GameScreenState extends State<GameScreen> {
             Positioned(
               top: 14,
               right: 20,
-              child: _HelpButton(onPressed: () {}),
+              child: _RefreshButton(
+                onPressed: _viewModel.isLoadingImage ? null : _refreshRound,
+              ),
             ),
           ],
         ),
@@ -212,10 +288,10 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _HelpButton extends StatelessWidget {
-  const _HelpButton({required this.onPressed});
+class _RefreshButton extends StatelessWidget {
+  const _RefreshButton({required this.onPressed});
 
-  final VoidCallback onPressed;
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {
@@ -225,21 +301,17 @@ class _HelpButton extends StatelessWidget {
         onTap: onPressed,
         customBorder: const CircleBorder(),
         child: Container(
-          width: 28,
-          height: 28,
-          decoration: const BoxDecoration(
-            color: Colors.black,
+          width: 32,
+          height: 32,
+          decoration: BoxDecoration(
+            color: onPressed != null ? Colors.black : Colors.black26,
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
-          child: const Text(
-            '?',
-            style: TextStyle(
-              color: Colors.white,
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              height: 1,
-            ),
+          child: const Icon(
+            Icons.refresh,
+            color: Colors.white,
+            size: 18,
           ),
         ),
       ),
@@ -280,146 +352,282 @@ class _ProgressDots extends StatelessWidget {
   }
 }
 
+class _SubmittedGuesses extends StatelessWidget {
+  const _SubmittedGuesses({
+    required this.guesses,
+    required this.answer,
+  });
+
+  final List<String> guesses;
+  final String? answer;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListView.separated(
+      padding: EdgeInsets.zero,
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: guesses.length,
+      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      itemBuilder: (context, index) {
+        final guess = guesses[index];
+        final isCorrect = answer != null &&
+            answer!.trim().toLowerCase() == guess.trim().toLowerCase();
+
+        return _GuessResultBar(guess: guess, isCorrect: isCorrect);
+      },
+    );
+  }
+}
+
+class _GuessResultBar extends StatelessWidget {
+  const _GuessResultBar({
+    required this.guess,
+    required this.isCorrect,
+  });
+
+  final String guess;
+  final bool isCorrect;
+
+  @override
+  Widget build(BuildContext context) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: isCorrect
+            ? AppColors.guessCorrectBackground
+            : AppColors.guessWrongBackground,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(
+          color: isCorrect
+              ? AppColors.guessCorrectBorder
+              : AppColors.guessWrongBorder,
+        ),
+      ),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Row(
+          children: [
+            Container(
+              width: 28,
+              height: 28,
+              decoration: BoxDecoration(
+                color: isCorrect
+                    ? AppColors.progressDotCorrect
+                    : AppColors.progressDotWrong,
+                shape: BoxShape.circle,
+              ),
+              alignment: Alignment.center,
+              child: Icon(
+                isCorrect ? Icons.check : Icons.close,
+                color: Colors.white,
+                size: 18,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                guess,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _GuessInputRow extends StatefulWidget {
   const _GuessInputRow({
     required this.controller,
+    required this.focusNode,
     required this.onGuess,
     required this.enabled,
+    required this.guessedFigures,
   });
 
   final TextEditingController controller;
+  final FocusNode focusNode;
   final VoidCallback onGuess;
   final bool enabled;
+  final List<String> guessedFigures;
 
   @override
   State<_GuessInputRow> createState() => _GuessInputRowState();
 }
 
 class _GuessInputRowState extends State<_GuessInputRow> {
-  late final FocusNode _focusNode;
+  static const _dropdownMaxHeight = 240.0;
 
   @override
   void initState() {
     super.initState();
-    _focusNode = FocusNode();
+    widget.controller.addListener(_onTextChanged);
+    widget.focusNode.addListener(_onFocusChanged);
   }
 
   @override
   void dispose() {
-    _focusNode.dispose();
+    widget.controller.removeListener(_onTextChanged);
+    widget.focusNode.removeListener(_onFocusChanged);
     super.dispose();
   }
 
+  void _onTextChanged() {
+    setState(() {});
+  }
+
+  void _onFocusChanged() {
+    if (!widget.focusNode.hasFocus) {
+      return;
+    }
+
+    // Wait for the keyboard animation before scrolling, so the input lands
+    // at the top of the viewport and leaves room for the dropdown below.
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted || !widget.focusNode.hasFocus) {
+        return;
+      }
+      Scrollable.ensureVisible(
+        context,
+        alignment: 0,
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOut,
+      );
+    });
+  }
+
+  bool get _canSubmit => HistoricalFigures.canSubmit(
+        widget.controller.text,
+        exclude: widget.guessedFigures,
+      );
+
   @override
   Widget build(BuildContext context) {
+    final canSubmit = widget.enabled && _canSubmit;
+
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Expanded(
-          child: RawAutocomplete<String>(
-            textEditingController: widget.controller,
-            focusNode: _focusNode,
-            optionsBuilder: (textEditingValue) {
-              return HistoricalFigures.search(textEditingValue.text);
-            },
-            displayStringForOption: (option) => option,
-            onSelected: (option) {
-              widget.controller.text = option;
-              widget.controller.selection = TextSelection.collapsed(
-                offset: option.length,
-              );
-            },
-            fieldViewBuilder: (context, fieldController, focusNode, onFieldSubmitted) {
-              return TextField(
-                controller: fieldController,
-                focusNode: focusNode,
-                enabled: widget.enabled,
-                onSubmitted: (_) {
-                  widget.onGuess();
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              return RawAutocomplete<String>(
+                textEditingController: widget.controller,
+                focusNode: widget.focusNode,
+                optionsBuilder: (textEditingValue) {
+                  if (!widget.enabled) {
+                    return const Iterable<String>.empty();
+                  }
+                  return HistoricalFigures.search(
+                    textEditingValue.text,
+                    exclude: widget.guessedFigures,
+                  );
                 },
-                style: const TextStyle(
-                  fontSize: 16,
-                  color: Colors.black87,
-                ),
-                decoration: InputDecoration(
-                  filled: true,
-                  fillColor: AppColors.inputFill,
-                  contentPadding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 14,
-                  ),
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.inputBorder),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.inputBorder),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.inputBorder),
-                  ),
-                  disabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(4),
-                    borderSide: const BorderSide(color: AppColors.inputBorder),
-                  ),
-                ),
-              );
-            },
-            optionsViewBuilder: (context, onSelected, options) {
-              if (options.isEmpty) {
-                return const SizedBox.shrink();
-              }
-
-              return Align(
-                alignment: Alignment.topLeft,
-                child: Material(
-                  elevation: 4,
-                  borderRadius: BorderRadius.circular(4),
-                  color: AppColors.dropdownBackground,
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxHeight: 200),
-                    child: ListView.separated(
-                      padding: EdgeInsets.zero,
-                      shrinkWrap: true,
-                      itemCount: options.length,
-                      separatorBuilder: (_, __) => const Divider(
-                        height: 1,
-                        color: AppColors.dropdownBorder,
-                      ),
-                      itemBuilder: (context, index) {
-                        final option = options.elementAt(index);
-                        return InkWell(
-                          onTap: () => onSelected(option),
-                          child: Padding(
-                            padding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 12,
-                            ),
-                            child: Text(
-                              option,
-                              style: const TextStyle(
-                                fontSize: 16,
-                                color: Colors.black87,
+                optionsViewBuilder: (context, onSelected, options) {
+                  return Align(
+                    alignment: Alignment.topLeft,
+                    child: Material(
+                      elevation: 4,
+                      color: AppColors.dropdownBackground,
+                      borderRadius: BorderRadius.circular(4),
+                      child: Container(
+                        width: constraints.maxWidth,
+                        constraints: const BoxConstraints(
+                          maxHeight: _dropdownMaxHeight,
+                        ),
+                        decoration: BoxDecoration(
+                          border: Border.all(color: AppColors.dropdownBorder),
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: ListView.builder(
+                          padding: EdgeInsets.zero,
+                          shrinkWrap: true,
+                          itemCount: options.length,
+                          itemBuilder: (context, index) {
+                            final option = options.elementAt(index);
+                            return InkWell(
+                              onTap: () => onSelected(option),
+                              child: Padding(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 12,
+                                ),
+                                child: Text(
+                                  option,
+                                  style: const TextStyle(
+                                    fontSize: 15,
+                                    color: Colors.black87,
+                                  ),
+                                ),
                               ),
-                            ),
-                          ),
-                        );
-                      },
+                            );
+                          },
+                        ),
+                      ),
                     ),
-                  ),
-                ),
+                  );
+                },
+                fieldViewBuilder:
+                    (context, controller, focusNode, onFieldSubmitted) {
+                  return TextField(
+                    controller: controller,
+                    focusNode: focusNode,
+                    cursorColor: AppColors.guessButton,
+                    enabled: widget.enabled,
+                    scrollPadding: const EdgeInsets.only(
+                      bottom: _dropdownMaxHeight + 40,
+                    ),
+                    onSubmitted: (_) {
+                      if (canSubmit) {
+                        widget.onGuess();
+                      }
+                    },
+                    style: const TextStyle(
+                      fontSize: 16,
+                      color: Colors.black87,
+                    ),
+                    decoration: InputDecoration(
+                      hintText: widget.enabled ? 'Type a name...' : null,
+                      filled: true,
+                      fillColor: AppColors.inputFill,
+                      isDense: true,
+                      contentPadding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 14,
+                      ),
+                      border: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide:
+                            const BorderSide(color: AppColors.inputBorder),
+                      ),
+                      enabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide:
+                            const BorderSide(color: AppColors.inputBorder),
+                      ),
+                      focusedBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide:
+                            const BorderSide(color: AppColors.inputBorder),
+                      ),
+                      disabledBorder: OutlineInputBorder(
+                        borderRadius: BorderRadius.circular(4),
+                        borderSide:
+                            const BorderSide(color: AppColors.inputBorder),
+                      ),
+                    ),
+                  );
+                },
               );
             },
           ),
         ),
         const SizedBox(width: 12),
         Material(
-          color: widget.enabled ? AppColors.guessButton : AppColors.progressDot,
+          color: canSubmit ? AppColors.guessButton : AppColors.progressDot,
           borderRadius: BorderRadius.circular(4),
           child: InkWell(
-            onTap: widget.enabled ? widget.onGuess : null,
+            onTap: canSubmit ? widget.onGuess : null,
             borderRadius: BorderRadius.circular(4),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
@@ -428,7 +636,7 @@ class _GuessInputRowState extends State<_GuessInputRow> {
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: widget.enabled ? Colors.white : Colors.black38,
+                  color: canSubmit ? Colors.white : Colors.black38,
                   letterSpacing: 0.5,
                 ),
               ),

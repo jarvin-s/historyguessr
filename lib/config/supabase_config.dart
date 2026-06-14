@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 abstract final class SupabaseConfig {
   static Future<void> initialize() async {
-    await dotenv.load(fileName: 'assets/.env');
+    await dotenv.load(fileName: '.env');
 
     final url = dotenv.env['SUPABASE_URL'];
     final anonKey = dotenv.env['SUPABASE_ANON_KEY'];
@@ -15,8 +15,8 @@ abstract final class SupabaseConfig {
         url.contains('your-project') ||
         anonKey == 'your-anon-key') {
       throw StateError(
-        'Set SUPABASE_URL and SUPABASE_ANON_KEY in assets/.env '
-        '(copy assets/.env.example to get started).',
+        'Set SUPABASE_URL and SUPABASE_ANON_KEY in .env '
+        '(copy .env.example to get started).',
       );
     }
 

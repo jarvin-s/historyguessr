@@ -1,6 +1,5 @@
 # Environment
 .env
-assets/.env
 
 # Miscellaneous
 *.class

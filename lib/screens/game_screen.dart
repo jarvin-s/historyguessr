@@ -67,6 +67,7 @@ class _GameScreenState extends State<GameScreen> {
       }
       RoundCompletionDialog.show(
         context,
+        viewModel: _viewModel,
         summary: summary,
         onPlayAgain: _refreshRound,
       );

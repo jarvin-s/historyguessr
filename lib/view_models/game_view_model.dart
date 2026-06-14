@@ -2,14 +2,19 @@ import 'package:flutter/foundation.dart';
 
 import '../data/historical_figures.dart';
 import '../models/game_round.dart';
+import '../services/gemini_fact_service.dart';
 import '../services/image_storage_service.dart';
 
 enum StageResult { pending, wrong, correct }
 
 class GameViewModel extends ChangeNotifier {
-  GameViewModel(this._imageStorageService);
+  GameViewModel(
+    this._imageStorageService, {
+    GeminiFactService? factService,
+  }) : _factService = factService ?? GeminiFactService();
 
   final ImageStorageService _imageStorageService;
+  final GeminiFactService _factService;
 
   GameRound? currentRound;
   int currentStage = 1;
@@ -141,13 +146,32 @@ class GameViewModel extends ChangeNotifier {
   }
 
   void _completeRound() {
+    final answer = currentRound!.answer;
     roundSummary = RoundSummary(
       guesses: List<String>.from(guesses),
       isWon: isWon,
-      answer: currentRound!.answer,
+      answer: answer,
       imageUrl: imageUrl,
+      isFactLoading: true,
     );
     shouldShowCompletionModal = true;
+    notifyListeners();
+
+    _loadFact(answer);
+  }
+
+  Future<void> _loadFact(String figureName) async {
+    final fact = await _factService.fetchFact(figureName);
+
+    // Ignore stale results if a new round started in the meantime.
+    if (roundSummary == null || roundSummary!.answer != figureName) {
+      return;
+    }
+
+    roundSummary = roundSummary!.copyWith(
+      fact: fact,
+      isFactLoading: false,
+    );
     notifyListeners();
   }
 

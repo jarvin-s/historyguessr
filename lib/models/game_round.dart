@@ -18,10 +18,28 @@ class RoundSummary {
     required this.isWon,
     required this.answer,
     this.imageUrl,
+    this.fact,
+    this.isFactLoading = false,
   });
 
   final List<String> guesses;
   final bool isWon;
   final String answer;
   final String? imageUrl;
+  final String? fact;
+  final bool isFactLoading;
+
+  RoundSummary copyWith({
+    String? fact,
+    bool? isFactLoading,
+  }) {
+    return RoundSummary(
+      guesses: guesses,
+      isWon: isWon,
+      answer: answer,
+      imageUrl: imageUrl,
+      fact: fact ?? this.fact,
+      isFactLoading: isFactLoading ?? this.isFactLoading,
+    );
+  }
 }

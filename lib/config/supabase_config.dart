@@ -3,7 +3,7 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 abstract final class SupabaseConfig {
   static Future<void> initialize() async {
-    await dotenv.load(fileName: 'env.example');
+    await dotenv.load(fileName: '.env');
 
     final url = dotenv.env['SUPABASE_URL'];
     final anonKey = dotenv.env['SUPABASE_ANON_KEY'];

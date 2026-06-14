@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
@@ -113,10 +114,10 @@ class _GameScreenState extends State<GameScreen> {
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, viewport) {
-                      // Invisible filler shown while the input is focused, so
-                      // the page can always scroll the input to the top and
-                      // leave the dropdown fully visible above the keyboard.
-                      final fillerHeight = _guessFocusNode.hasFocus
+                      // On mobile, add invisible filler while the input is
+                      // focused so the page can scroll the input to the top
+                      // and leave room for the dropdown above the keyboard.
+                      final fillerHeight = !kIsWeb && _guessFocusNode.hasFocus
                           ? (viewport.maxHeight - 120)
                               .clamp(0.0, double.infinity)
                           : 0.0;
@@ -477,7 +478,7 @@ class _GuessInputRowState extends State<_GuessInputRow> {
   }
 
   void _onFocusChanged() {
-    if (!widget.focusNode.hasFocus) {
+    if (!widget.focusNode.hasFocus || kIsWeb) {
       return;
     }
 
@@ -501,6 +502,14 @@ class _GuessInputRowState extends State<_GuessInputRow> {
         exclude: widget.guessedFigures,
       );
 
+  void _pickOption(String option, AutocompleteOnSelected<String> onSelected) {
+    widget.controller.value = TextEditingValue(
+      text: option,
+      selection: TextSelection.collapsed(offset: option.length),
+    );
+    onSelected(option);
+  }
+
   @override
   Widget build(BuildContext context) {
     final canSubmit = widget.enabled && _canSubmit;
@@ -514,6 +523,12 @@ class _GuessInputRowState extends State<_GuessInputRow> {
               return RawAutocomplete<String>(
                 textEditingController: widget.controller,
                 focusNode: widget.focusNode,
+                onSelected: (option) {
+                  widget.controller.value = TextEditingValue(
+                    text: option,
+                    selection: TextSelection.collapsed(offset: option.length),
+                  );
+                },
                 optionsBuilder: (textEditingValue) {
                   if (!widget.enabled) {
                     return const Iterable<String>.empty();
@@ -545,8 +560,10 @@ class _GuessInputRowState extends State<_GuessInputRow> {
                           itemCount: options.length,
                           itemBuilder: (context, index) {
                             final option = options.elementAt(index);
-                            return InkWell(
-                              onTap: () => onSelected(option),
+                            return Listener(
+                              behavior: HitTestBehavior.opaque,
+                              onPointerDown: (_) =>
+                                  _pickOption(option, onSelected),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
@@ -574,9 +591,11 @@ class _GuessInputRowState extends State<_GuessInputRow> {
                     focusNode: focusNode,
                     cursorColor: AppColors.guessButton,
                     enabled: widget.enabled,
-                    scrollPadding: const EdgeInsets.only(
-                      bottom: _dropdownMaxHeight + 40,
-                    ),
+                    scrollPadding: kIsWeb
+                        ? EdgeInsets.zero
+                        : const EdgeInsets.only(
+                            bottom: _dropdownMaxHeight + 40,
+                          ),
                     onSubmitted: (_) {
                       if (canSubmit) {
                         widget.onGuess();

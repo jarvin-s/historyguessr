@@ -9,6 +9,10 @@ import '../theme/app_colors.dart';
 import '../view_models/game_view_model.dart';
 import '../widgets/round_completion_dialog.dart';
 
+bool get _usesMobileKeyboardLayout =>
+    defaultTargetPlatform == TargetPlatform.android ||
+    defaultTargetPlatform == TargetPlatform.iOS;
+
 class GameScreen extends StatefulWidget {
   const GameScreen({super.key});
 
@@ -25,9 +29,8 @@ class _GameScreenState extends State<GameScreen> {
   void initState() {
     super.initState();
     final client = SupabaseConfig.client;
-    _viewModel = GameViewModel(
-      ImageStorageService(client),
-    )..addListener(_onViewModelChanged);
+    _viewModel = GameViewModel(ImageStorageService(client))
+      ..addListener(_onViewModelChanged);
     _guessFocusNode.addListener(_onGuessFocusChanged);
     _startRound();
   }
@@ -78,10 +81,7 @@ class _GameScreenState extends State<GameScreen> {
     final guess = HistoricalFigures.resolveExact(_guessController.text);
     if (guess == null ||
         !_viewModel.canGuess ||
-        !HistoricalFigures.canSubmit(
-          guess,
-          exclude: _viewModel.guesses,
-        )) {
+        !HistoricalFigures.canSubmit(guess, exclude: _viewModel.guesses)) {
       return;
     }
 
@@ -111,16 +111,23 @@ class _GameScreenState extends State<GameScreen> {
             Column(
               children: [
                 _Header(),
-                const Divider(height: 1, thickness: 1, color: AppColors.divider),
+                const Divider(
+                  height: 1,
+                  thickness: 1,
+                  color: AppColors.divider,
+                ),
                 Expanded(
                   child: LayoutBuilder(
                     builder: (context, viewport) {
                       // On mobile, add invisible filler while the input is
                       // focused so the page can scroll the input to the top
                       // and leave room for the dropdown above the keyboard.
-                      final fillerHeight = !kIsWeb && _guessFocusNode.hasFocus
-                          ? (viewport.maxHeight - 120)
-                              .clamp(0.0, double.infinity)
+                      final fillerHeight =
+                          _usesMobileKeyboardLayout && _guessFocusNode.hasFocus
+                          ? (viewport.maxHeight - 120).clamp(
+                              0.0,
+                              double.infinity,
+                            )
                           : 0.0;
 
                       return SingleChildScrollView(
@@ -128,7 +135,12 @@ class _GameScreenState extends State<GameScreen> {
                           child: ConstrainedBox(
                             constraints: const BoxConstraints(maxWidth: 520),
                             child: Padding(
-                              padding: const EdgeInsets.fromLTRB(32, 24, 32, 24),
+                              padding: const EdgeInsets.fromLTRB(
+                                32,
+                                24,
+                                32,
+                                24,
+                              ),
                               child: Column(
                                 crossAxisAlignment: CrossAxisAlignment.stretch,
                                 children: [
@@ -203,11 +215,7 @@ class _GameImage extends StatelessWidget {
   Widget build(BuildContext context) {
     return ClipRRect(
       borderRadius: BorderRadius.circular(12),
-      child: SizedBox(
-        width: _size,
-        height: _size,
-        child: _buildContent(),
-      ),
+      child: SizedBox(width: _size, height: _size, child: _buildContent()),
     );
   }
 
@@ -310,11 +318,7 @@ class _RefreshButton extends StatelessWidget {
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
-          child: const Icon(
-            Icons.refresh,
-            color: Colors.white,
-            size: 18,
-          ),
+          child: const Icon(Icons.refresh, color: Colors.white, size: 18),
         ),
       ),
     );
@@ -355,10 +359,7 @@ class _ProgressDots extends StatelessWidget {
 }
 
 class _SubmittedGuesses extends StatelessWidget {
-  const _SubmittedGuesses({
-    required this.guesses,
-    required this.answer,
-  });
+  const _SubmittedGuesses({required this.guesses, required this.answer});
 
   final List<String> guesses;
   final String? answer;
@@ -370,10 +371,11 @@ class _SubmittedGuesses extends StatelessWidget {
       shrinkWrap: true,
       physics: const NeverScrollableScrollPhysics(),
       itemCount: guesses.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
+      separatorBuilder: (_, _) => const SizedBox(height: 8),
       itemBuilder: (context, index) {
         final guess = guesses[index];
-        final isCorrect = answer != null &&
+        final isCorrect =
+            answer != null &&
             answer!.trim().toLowerCase() == guess.trim().toLowerCase();
 
         return _GuessResultBar(guess: guess, isCorrect: isCorrect);
@@ -383,10 +385,7 @@ class _SubmittedGuesses extends StatelessWidget {
 }
 
 class _GuessResultBar extends StatelessWidget {
-  const _GuessResultBar({
-    required this.guess,
-    required this.isCorrect,
-  });
+  const _GuessResultBar({required this.guess, required this.isCorrect});
 
   final String guess;
   final bool isCorrect;
@@ -426,11 +425,7 @@ class _GuessResultBar extends StatelessWidget {
               ),
             ),
             const SizedBox(width: 12),
-            Expanded(
-              child: Text(
-                guess,
-              ),
-            ),
+            Expanded(child: Text(guess)),
           ],
         ),
       ),
@@ -479,7 +474,7 @@ class _GuessInputRowState extends State<_GuessInputRow> {
   }
 
   void _onFocusChanged() {
-    if (!widget.focusNode.hasFocus || kIsWeb) {
+    if (!widget.focusNode.hasFocus || !_usesMobileKeyboardLayout) {
       return;
     }
 
@@ -499,9 +494,9 @@ class _GuessInputRowState extends State<_GuessInputRow> {
   }
 
   bool get _canSubmit => HistoricalFigures.canSubmit(
-        widget.controller.text,
-        exclude: widget.guessedFigures,
-      );
+    widget.controller.text,
+    exclude: widget.guessedFigures,
+  );
 
   void _pickOption(String option, AutocompleteOnSelected<String> onSelected) {
     widget.controller.value = TextEditingValue(
@@ -561,10 +556,8 @@ class _GuessInputRowState extends State<_GuessInputRow> {
                           itemCount: options.length,
                           itemBuilder: (context, index) {
                             final option = options.elementAt(index);
-                            return Listener(
-                              behavior: HitTestBehavior.opaque,
-                              onPointerDown: (_) =>
-                                  _pickOption(option, onSelected),
+                            return InkWell(
+                              onTap: () => _pickOption(option, onSelected),
                               child: Padding(
                                 padding: const EdgeInsets.symmetric(
                                   horizontal: 16,
@@ -587,57 +580,61 @@ class _GuessInputRowState extends State<_GuessInputRow> {
                 },
                 fieldViewBuilder:
                     (context, controller, focusNode, onFieldSubmitted) {
-                  return TextField(
-                    controller: controller,
-                    focusNode: focusNode,
-                    cursorColor: AppColors.guessButton,
-                    enabled: widget.enabled,
-                    scrollPadding: kIsWeb
-                        ? EdgeInsets.zero
-                        : const EdgeInsets.only(
-                            bottom: _dropdownMaxHeight + 40,
+                      return TextField(
+                        controller: controller,
+                        focusNode: focusNode,
+                        cursorColor: AppColors.guessButton,
+                        enabled: widget.enabled,
+                        scrollPadding: _usesMobileKeyboardLayout
+                            ? const EdgeInsets.only(
+                                bottom: _dropdownMaxHeight + 40,
+                              )
+                            : EdgeInsets.zero,
+                        onSubmitted: (_) {
+                          if (canSubmit) {
+                            widget.onGuess();
+                          }
+                        },
+                        style: const TextStyle(
+                          fontSize: 16,
+                          color: Colors.black87,
+                        ),
+                        decoration: InputDecoration(
+                          hintText: widget.enabled ? 'Type a name...' : null,
+                          filled: true,
+                          fillColor: AppColors.inputFill,
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 14,
                           ),
-                    onSubmitted: (_) {
-                      if (canSubmit) {
-                        widget.onGuess();
-                      }
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(4),
+                            borderSide: const BorderSide(
+                              color: AppColors.inputBorder,
+                            ),
+                          ),
+                          enabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(4),
+                            borderSide: const BorderSide(
+                              color: AppColors.inputBorder,
+                            ),
+                          ),
+                          focusedBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(4),
+                            borderSide: const BorderSide(
+                              color: AppColors.inputBorder,
+                            ),
+                          ),
+                          disabledBorder: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(4),
+                            borderSide: const BorderSide(
+                              color: AppColors.inputBorder,
+                            ),
+                          ),
+                        ),
+                      );
                     },
-                    style: const TextStyle(
-                      fontSize: 16,
-                      color: Colors.black87,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: widget.enabled ? 'Type a name...' : null,
-                      filled: true,
-                      fillColor: AppColors.inputFill,
-                      isDense: true,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 14,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(4),
-                        borderSide:
-                            const BorderSide(color: AppColors.inputBorder),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(4),
-                        borderSide:
-                            const BorderSide(color: AppColors.inputBorder),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(4),
-                        borderSide:
-                            const BorderSide(color: AppColors.inputBorder),
-                      ),
-                      disabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(4),
-                        borderSide:
-                            const BorderSide(color: AppColors.inputBorder),
-                      ),
-                    ),
-                  );
-                },
               );
             },
           ),

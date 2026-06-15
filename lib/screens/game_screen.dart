@@ -7,6 +7,7 @@ import '../data/historical_figures.dart';
 import '../services/image_storage_service.dart';
 import '../theme/app_colors.dart';
 import '../view_models/game_view_model.dart';
+import '../widgets/how_to_play_dialog.dart';
 import '../widgets/round_completion_dialog.dart';
 
 bool get _usesMobileKeyboardLayout =>
@@ -187,8 +188,19 @@ class _GameScreenState extends State<GameScreen> {
             Positioned(
               top: 14,
               right: 20,
-              child: _RefreshButton(
-                onPressed: _viewModel.isLoadingImage ? null : _refreshRound,
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  _HeaderIconButton(
+                    icon: Icons.help_outline,
+                    onPressed: () => HowToPlayDialog.show(context),
+                  ),
+                  const SizedBox(width: 10),
+                  _HeaderIconButton(
+                    icon: Icons.refresh,
+                    onPressed: _viewModel.isLoadingImage ? null : _refreshRound,
+                  ),
+                ],
               ),
             ),
           ],
@@ -298,9 +310,13 @@ class _Header extends StatelessWidget {
   }
 }
 
-class _RefreshButton extends StatelessWidget {
-  const _RefreshButton({required this.onPressed});
+class _HeaderIconButton extends StatelessWidget {
+  const _HeaderIconButton({
+    required this.icon,
+    required this.onPressed,
+  });
 
+  final IconData icon;
   final VoidCallback? onPressed;
 
   @override
@@ -318,7 +334,7 @@ class _RefreshButton extends StatelessWidget {
             shape: BoxShape.circle,
           ),
           alignment: Alignment.center,
-          child: const Icon(Icons.refresh, color: Colors.white, size: 18),
+          child: Icon(icon, color: Colors.white, size: 18),
         ),
       ),
     );

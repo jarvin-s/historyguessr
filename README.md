@@ -1,17 +1,30 @@
-# historyguessr
+# HistoryGuessr 
 
-A new Flutter project.
+A Flutter app where you guess historical figures from pixelated portraits, then unlock a fact about them once you get it right.
+
+## Features
+
+- Pixelated images of historical figures that sharpen as you guess
+- Free-text or multiple-choice guessing
+- Fact reveal on completion
+- Score tracking and streaks
+- Powered by Supabase (database, storage)
+
+## Tech Stack
+
+- **Flutter** - cross-platform UI
+- **Supabase** - backend (Postgres DB, Storage for images, Auth)
+- **supabase_flutter** - Flutter SDK for Supabase
 
 ## Getting Started
 
-This project is a starting point for a Flutter application.
+### Prerequisites
 
-A few resources to get you started if this is your first Flutter project:
+- Flutter SDK `>=3.0.0`
+- A [Supabase](https://supabase.com) project
 
-- [Learn Flutter](https://docs.flutter.dev/get-started/learn-flutter)
-- [Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Flutter learning resources](https://docs.flutter.dev/reference/learning-resources)
+## Contributing
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+1. Fork the repo
+2. Create a feature branch: `git checkout -b feat/your-feature`
+3. Commit and push, then open a PR

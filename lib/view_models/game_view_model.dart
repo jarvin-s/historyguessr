@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../data/historical_figures.dart';
 import '../models/game_round.dart';
+import '../services/completed_figures_service.dart';
 import '../services/gemini_fact_service.dart';
 import '../services/image_storage_service.dart';
 
@@ -10,10 +11,14 @@ enum StageResult { pending, wrong, correct }
 class GameViewModel extends ChangeNotifier {
   GameViewModel(
     this._imageStorageService, {
+    CompletedFiguresService? completedFiguresService,
     GeminiFactService? factService,
-  }) : _factService = factService ?? GeminiFactService();
+  })  : _completedFiguresService =
+            completedFiguresService ?? CompletedFiguresService(),
+        _factService = factService ?? GeminiFactService();
 
   final ImageStorageService _imageStorageService;
+  final CompletedFiguresService _completedFiguresService;
   final GeminiFactService _factService;
 
   GameRound? currentRound;
@@ -30,11 +35,23 @@ class GameViewModel extends ChangeNotifier {
   bool isGameOver = false;
   bool shouldShowCompletionModal = false;
   RoundSummary? roundSummary;
+  bool allFiguresCompleted = false;
+  int totalFigureCount = 0;
 
   bool get canGuess =>
-      currentRound != null && !isLoadingImage && !isWon && !isGameOver;
+      currentRound != null &&
+      !isLoadingImage &&
+      !isWon &&
+      !isGameOver &&
+      !allFiguresCompleted;
 
-  Future<void> startNewRound({String? excludeFolderKey}) async {
+  bool get isRoundComplete => isWon || isGameOver;
+
+  Future<void> initialize() async {
+    await _completedFiguresService.load();
+  }
+
+  Future<void> startNewRound() async {
     isLoadingImage = true;
     imageError = null;
     currentRound = null;
@@ -48,12 +65,24 @@ class GameViewModel extends ChangeNotifier {
     isGameOver = false;
     shouldShowCompletionModal = false;
     roundSummary = null;
+    allFiguresCompleted = false;
     notifyListeners();
 
     try {
-      final folderKey = await _imageStorageService.pickRandomFigureKey(
-        exclude: excludeFolderKey,
+      final allKeys = await _imageStorageService.listRandomFigureKeys();
+      totalFigureCount = allKeys.length;
+
+      final uncompleted = await _imageStorageService.availableFigureKeys(
+        exclude: _completedFiguresService.completedKeys,
       );
+
+      if (uncompleted.isEmpty) {
+        allFiguresCompleted = true;
+        imageUrl = null;
+        return;
+      }
+
+      final folderKey = _imageStorageService.pickFrom(uncompleted);
       final answer = HistoricalFigures.answerForFolderKey(folderKey);
 
       if (answer == null) {
@@ -75,10 +104,6 @@ class GameViewModel extends ChangeNotifier {
       isLoadingImage = false;
       notifyListeners();
     }
-  }
-
-  Future<void> refreshRound() {
-    return startNewRound(excludeFolderKey: currentRound?.folderKey);
   }
 
   Future<void> submitGuess(String guess) async {
@@ -146,7 +171,9 @@ class GameViewModel extends ChangeNotifier {
   }
 
   void _completeRound() {
-    final answer = currentRound!.answer;
+    final round = currentRound!;
+    final answer = round.answer;
+    _completedFiguresService.markCompleted(round.folderKey);
     roundSummary = RoundSummary(
       guesses: List<String>.from(guesses),
       isWon: isWon,
@@ -178,5 +205,11 @@ class GameViewModel extends ChangeNotifier {
   void clearCompletionModalFlag() {
     shouldShowCompletionModal = false;
     notifyListeners();
+  }
+
+  Future<void> resetProgress() async {
+    await _completedFiguresService.reset();
+    allFiguresCompleted = false;
+    await startNewRound();
   }
 }

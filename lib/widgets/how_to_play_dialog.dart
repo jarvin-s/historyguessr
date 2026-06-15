@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_colors.dart';
+import 'app_background.dart';
 
 class HowToPlayDialog extends StatelessWidget {
   const HowToPlayDialog({super.key});
@@ -20,9 +21,15 @@ class HowToPlayDialog extends StatelessWidget {
     final maxDialogHeight = MediaQuery.sizeOf(context).height * 0.9;
 
     return Dialog(
-      backgroundColor: AppColors.background,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      child: ConstrainedBox(
+      backgroundColor: Colors.transparent,
+      elevation: 0,
+      child: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: DecoratedBox(
+          decoration: AppBackground.dialogDecoration(),
+          child: ConstrainedBox(
         constraints: BoxConstraints(
           maxWidth: 400,
           maxHeight: maxDialogHeight,
@@ -126,6 +133,8 @@ class HowToPlayDialog extends StatelessWidget {
               ),
             ),
           ],
+        ),
+          ),
         ),
       ),
     );

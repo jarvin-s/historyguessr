@@ -26,22 +26,32 @@ class ImageStorageService {
         .toList();
   }
 
-  Future<String> pickRandomFigureKey({String? exclude}) async {
+  Future<List<String>> availableFigureKeys({
+    Iterable<String> exclude = const [],
+  }) async {
     final keys = await listRandomFigureKeys();
-    var available = keys;
+    final excluded = exclude.toSet();
+    return keys.where((key) => !excluded.contains(key)).toList();
+  }
 
-    if (exclude != null) {
-      available = keys.where((key) => key != exclude).toList();
-      if (available.isEmpty) {
-        available = keys;
-      }
-    }
+  Future<String> pickRandomFigureKey({
+    Iterable<String> exclude = const [],
+  }) async {
+    final available = await availableFigureKeys(exclude: exclude);
 
     if (available.isEmpty) {
-      throw StateError('No random figures found in storage at $randomPathPrefix/.');
+      throw StateError('No figures available.');
     }
 
     return available[_random.nextInt(available.length)];
+  }
+
+  String pickFrom(List<String> candidates) {
+    if (candidates.isEmpty) {
+      throw StateError('No figures available.');
+    }
+
+    return candidates[_random.nextInt(candidates.length)];
   }
 
   Future<String> fetchRandomImageUrl(String folderKey, int stage) {

@@ -4,11 +4,13 @@ import 'package:google_fonts/google_fonts.dart';
 
 import '../config/supabase_config.dart';
 import '../data/historical_figures.dart';
+import '../services/completed_figures_service.dart';
 import '../services/image_storage_service.dart';
 import '../theme/app_colors.dart';
 import '../view_models/game_view_model.dart';
 import '../widgets/how_to_play_dialog.dart';
 import '../widgets/round_completion_dialog.dart';
+import 'all_figures_completed_screen.dart';
 
 bool get _usesMobileKeyboardLayout =>
     defaultTargetPlatform == TargetPlatform.android ||
@@ -30,10 +32,17 @@ class _GameScreenState extends State<GameScreen> {
   void initState() {
     super.initState();
     final client = SupabaseConfig.client;
-    _viewModel = GameViewModel(ImageStorageService(client))
-      ..addListener(_onViewModelChanged);
+    _viewModel = GameViewModel(
+      ImageStorageService(client),
+      completedFiguresService: CompletedFiguresService(),
+    )..addListener(_onViewModelChanged);
     _guessFocusNode.addListener(_onGuessFocusChanged);
-    _startRound();
+    _initializeGame();
+  }
+
+  Future<void> _initializeGame() async {
+    await _viewModel.initialize();
+    await _startRound();
   }
 
   void _onGuessFocusChanged() {
@@ -45,10 +54,9 @@ class _GameScreenState extends State<GameScreen> {
     _maybeShowCompletionModal();
   }
 
-  Future<void> _refreshRound() async {
+  Future<void> _playNextRound() async {
     _guessController.clear();
-    await _viewModel.refreshRound();
-    _maybeShowCompletionModal();
+    await _startRound();
   }
 
   void _onViewModelChanged() {
@@ -73,7 +81,7 @@ class _GameScreenState extends State<GameScreen> {
         context,
         viewModel: _viewModel,
         summary: summary,
-        onPlayAgain: _refreshRound,
+        onPlayAgain: _playNextRound,
       );
     });
   }
@@ -104,8 +112,18 @@ class _GameScreenState extends State<GameScreen> {
 
   @override
   Widget build(BuildContext context) {
+    if (_viewModel.allFiguresCompleted) {
+      return AllFiguresCompletedScreen(
+        completedCount: _viewModel.totalFigureCount,
+        onStartOver: () async {
+          _guessController.clear();
+          await _viewModel.resetProgress();
+        },
+      );
+    }
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.transparent,
       body: SafeArea(
         child: Stack(
           children: [
@@ -163,8 +181,12 @@ class _GameScreenState extends State<GameScreen> {
                                     controller: _guessController,
                                     focusNode: _guessFocusNode,
                                     enabled: _viewModel.canGuess,
+                                    showNext:
+                                        _viewModel.isRoundComplete &&
+                                        !_viewModel.isLoadingImage,
                                     guessedFigures: _viewModel.guesses,
                                     onGuess: _submitGuess,
+                                    onNext: _playNextRound,
                                   ),
                                   if (_viewModel.guesses.isNotEmpty) ...[
                                     const SizedBox(height: 16),
@@ -188,19 +210,9 @@ class _GameScreenState extends State<GameScreen> {
             Positioned(
               top: 14,
               right: 20,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _HeaderIconButton(
-                    icon: Icons.help_outline,
-                    onPressed: () => HowToPlayDialog.show(context),
-                  ),
-                  const SizedBox(width: 10),
-                  _HeaderIconButton(
-                    icon: Icons.refresh,
-                    onPressed: _viewModel.isLoadingImage ? null : _refreshRound,
-                  ),
-                ],
+              child: _HeaderIconButton(
+                icon: Icons.help_outline,
+                onPressed: () => HowToPlayDialog.show(context),
               ),
             ),
           ],
@@ -297,12 +309,19 @@ class _Header extends StatelessWidget {
     return SizedBox(
       height: 56,
       child: Center(
-        child: Text(
-          'HistoryGuessr',
-          style: GoogleFonts.pressStart2p(
-            fontSize: 18,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 3),
+          decoration: BoxDecoration(
             color: Colors.black,
-            height: 1.4,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Text(
+            'HistoryGuessr',
+            style: GoogleFonts.pressStart2p(
+              fontSize: 18,
+              color: Colors.white,
+              height: 1.4,
+            ),
           ),
         ),
       ),
@@ -456,6 +475,8 @@ class _GuessInputRow extends StatefulWidget {
     required this.onGuess,
     required this.enabled,
     required this.guessedFigures,
+    this.showNext = false,
+    this.onNext,
   });
 
   final TextEditingController controller;
@@ -463,6 +484,8 @@ class _GuessInputRow extends StatefulWidget {
   final VoidCallback onGuess;
   final bool enabled;
   final List<String> guessedFigures;
+  final bool showNext;
+  final VoidCallback? onNext;
 
   @override
   State<_GuessInputRow> createState() => _GuessInputRowState();
@@ -524,7 +547,8 @@ class _GuessInputRowState extends State<_GuessInputRow> {
 
   @override
   Widget build(BuildContext context) {
-    final canSubmit = widget.enabled && _canSubmit;
+    final showNextButton = widget.showNext && widget.onNext != null;
+    final canSubmit = !showNextButton && widget.enabled && _canSubmit;
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -657,19 +681,27 @@ class _GuessInputRowState extends State<_GuessInputRow> {
         ),
         const SizedBox(width: 12),
         Material(
-          color: canSubmit ? AppColors.guessButton : AppColors.progressDot,
-          borderRadius: BorderRadius.circular(4),
+          color: showNextButton || canSubmit
+              ? AppColors.guessButton
+              : const Color.fromARGB(255, 186, 179, 177),
+          shape: const StadiumBorder(),
           child: InkWell(
-            onTap: canSubmit ? widget.onGuess : null,
-            borderRadius: BorderRadius.circular(4),
+            onTap: showNextButton
+                ? widget.onNext
+                : canSubmit
+                ? widget.onGuess
+                : null,
+            customBorder: const StadiumBorder(),
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 14),
               child: Text(
-                'GUESS',
+                showNextButton ? 'NEXT' : 'GUESS',
                 style: TextStyle(
                   fontSize: 15,
                   fontWeight: FontWeight.w800,
-                  color: canSubmit ? Colors.white : Colors.black38,
+                  color: showNextButton || canSubmit
+                      ? Colors.white
+                      : Colors.black38,
                   letterSpacing: 0.5,
                 ),
               ),

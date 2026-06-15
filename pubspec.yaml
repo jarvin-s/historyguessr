@@ -38,6 +38,7 @@ dependencies:
   google_fonts: ^6.2.1
   supabase_flutter: ^2.9.1
   http: ^1.6.0
+  shared_preferences: ^2.5.5
 
 dev_dependencies:
   flutter_test:
@@ -63,6 +64,7 @@ flutter:
 
   assets:
     - .env
+    - assets/images/background.jpg
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images

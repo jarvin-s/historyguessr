@@ -3,6 +3,7 @@ import 'package:flutter/semantics.dart';
 
 import 'config/supabase_config.dart';
 import 'screens/game_screen.dart';
+import 'widgets/app_background.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,9 +23,12 @@ class HistoryGuessrApp extends StatelessWidget {
       title: 'HistoryGuessr',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        scaffoldBackgroundColor: const Color(0xFFFDF0E0),
+        scaffoldBackgroundColor: Colors.transparent,
         fontFamily: 'Roboto',
       ),
+      builder: (context, child) {
+        return AppBackgroundScope(child: child ?? const SizedBox.shrink());
+      },
       home: const GameScreen(),
     );
   }
